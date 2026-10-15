@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Andre Veiculos — Rastreamento</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --teal: #1ab69a;
+            --teal-dark: #149980;
+            --teal-soft: rgba(26, 182, 154, 0.14);
+            --navy: #002845;
+            --navy-mid: #0a3d5c;
+            --bg: #ffffff;
+            --surface: #ffffff;
+            --text: #002845;
+            --text-muted: #5a7a8f;
+            --field: #f0f5f8;
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        html, body {
+            width: 100%;
+            min-height: 100%;
+            height: 100%;
+            font-family: 'Manrope', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        /* Zero borders na interface */
+        *:not(.spinner):not(.processing-ring),
+        *:not(.spinner):not(.processing-ring)::before,
+        *:not(.spinner):not(.processing-ring)::after {
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        button, input, select, textarea, a,
+        .card, .card-header, .card-body, .status-strip,
+        .qr-box, .qr-info-card, .processing-panel, .success-badge,
+        .form-input, .form-select, .btn, .logout-btn,
+        .loading-logo, .brand-logo, .card-header-logo, .processing-logo,
+        .user-chip, .info-icon, .loading-badge, #qrcode img, #qrcode canvas {
+            border-radius: 0 !important;
+        }
+
+        .ambient { display: none; }
+
+        /* Loading full screen */
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(26, 182, 154, 0.4), transparent),
+                linear-gradient(165deg, var(--navy) 0%, #003a5c 55%, #004d66 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            transition: opacity 0.55s ease, visibility 0.55s;
+            padding: 32px 24px;
+        }
+        #loading-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .loading-logo {
+            width: min(260px, 72vw);
+            height: min(260px, 72vw);
+            overflow: hidden;
+            flex-shrink: 0;
+            animation: logoIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both, floatSoft 3.2s ease-in-out 0.9s infinite;
+        }
+        .loading-logo img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            object-position: center;
+        }
+
+        @keyframes logoIn {
+            from { opacity: 0; transform: translateY(24px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes floatSoft {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .loading-badge {
+            margin-top: 24px;
+            padding: 10px 20px;
+            background: rgba(26, 182, 154, 0.18);
+            color: #a8f0e0;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            animation: fadeUp 0.7s ease 0.25s both;
+        }
+        .loading-subtitle {
+            margin-top: 12px;
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.95rem;
+            font-weight: 500;
+            animation: fadeUp 0.7s ease 0.4s both;
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .spinner {
+            width: 36px; height: 36px;
+            border: 3px solid rgba(255, 255, 255, 0.12) !important;
+            border-top-color: var(--teal) !important;
+            border-radius: 50% !important;
+            animation: spin 0.75s linear infinite;
+            margin-top: 36px;
+            box-shadow: none !important;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* App — tela inteira */
+        #app {
+            width: 100%;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: none;
+            position: relative;
+            z-index: 1;
+            background: var(--bg);
+        }
+        #app.active {
+            display: flex;
+            flex-direction: column;
+            animation: appReveal 0.5s ease both;
+        }
+        @keyframes appReveal {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .app-header {
+            width: 100%;
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            animation: slideDown 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .brand-lockup { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .brand-logo {
+            width: 48px; height: 48px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+        .brand-text { min-width: 0; }
+        .brand-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: white;
+            letter-spacing: -0.02em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .brand-tag {
+            font-size: 0.7rem;
+            color: var(--teal);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .user-bar { display: none; align-items: center; gap: 10px; flex-shrink: 0; }
+        .user-bar.visible { display: flex; animation: fadeUp 0.4s ease both; }
+        .user-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 6px 12px 6px 6px;
+        }
+        .user-avatar {
+            width: 28px; height: 28px;
+            background: var(--teal);
+            border-radius: 50% !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: white;
+        }
+        #user-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: white;
+            max-width: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.95);
+            padding: 10px 14px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .logout-btn:active { opacity: 0.85; }
+
+        /* Conteúdo cobrindo a tela toda */
+        .main-content {
+            flex: 1;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .status-strip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--field);
+            padding: 14px 20px;
+            width: 100%;
+            animation: fadeUp 0.4s ease both;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50% !important;
+            background: var(--teal);
+            flex-shrink: 0;
+            animation: pulseDot 2s ease infinite;
+        }
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.45; }
+        }
+        .status-strip span {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        .status-strip strong { color: var(--navy); font-weight: 700; }
+
+        .screen {
+            display: none;
+            flex: 1;
+            width: 100%;
+            min-height: calc(100vh - 80px);
+            min-height: calc(100dvh - 80px);
+        }
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+            animation: screenIn 0.4s ease;
+        }
+        @keyframes screenIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .card {
+            background: var(--surface);
+            width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: fadeUp 0.45s ease both;
+        }
+        .card-header {
+            background: linear-gradient(145deg, var(--navy) 0%, var(--navy-mid) 100%);
+            padding: 32px 24px;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+        }
+        .card-header::before {
+            content: '';
+            position: absolute;
+            width: 240px; height: 240px;
+            background: radial-gradient(circle, rgba(26, 182, 154, 0.28), transparent 70%);
+            top: -80px; right: -60px;
+            animation: orbFloat 8s ease-in-out infinite;
+        }
+        @keyframes orbFloat {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(-16px, 20px); }
+        }
+        .card-header-logo {
+            width: 80px; height: 80px;
+            margin: 0 auto 16px;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+            animation: logoPop 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+        }
+        @keyframes logoPop {
+            from { opacity: 0; transform: scale(0.85); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .card-header-logo img { width: 100%; height: 100%; object-fit: cover; }
+        .card-header h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 6px;
+            position: relative;
+            z-index: 1;
+        }
+        .card-header p {
+            font-size: 0.9rem;
+            opacity: 0.75;
+            font-weight: 500;
+            position: relative;
+            z-index: 1;
+        }
+        .card-body {
+            padding: 24px 20px calc(28px + var(--safe-bottom));
+            flex: 1;
+            width: 100%;
+            background: var(--surface);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+            animation: fieldIn 0.35s ease both;
+        }
+        .form-group:nth-child(1) { animation-delay: 0.04s; }
+        .form-group:nth-child(2) { animation-delay: 0.08s; }
+        .form-group:nth-child(3) { animation-delay: 0.12s; }
+        .form-group:nth-child(4) { animation-delay: 0.16s; }
+        .form-group:nth-child(5) { animation-delay: 0.2s; }
+        .form-group:nth-child(6) { animation-delay: 0.24s; }
+        .form-group:nth-child(7) { animation-delay: 0.28s; }
+        .form-group:nth-child(8) { animation-delay: 0.32s; }
+        .form-group:nth-child(9) { animation-delay: 0.36s; }
+        .form-group:nth-child(10) { animation-delay: 0.4s; }
+        @keyframes fieldIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-label {
+            display: block;
+            color: var(--navy);
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .section-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin: 10px 0 14px;
+            padding-top: 4px;
+        }
+        .section-label::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: var(--teal);
+        }
+
+        .input-wrapper { position: relative; }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 16px 16px 16px 48px;
+            font-size: 1rem;
+            font-family: inherit;
+            font-weight: 500;
+            color: var(--text);
+            background: var(--field);
+            appearance: none;
+            -webkit-appearance: none;
+            transition: background 0.2s;
+        }
+        .form-input.no-icon, .form-select.no-icon { padding-left: 16px; }
+        .form-input::placeholder { color: #9bb0bf; font-weight: 400; }
+        .form-input:focus, .form-select:focus {
+            background: #e8f2f6;
+        }
+        .form-select {
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235a7a8f' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 44px;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px; height: 20px;
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .input-wrapper:focus-within .input-icon { opacity: 0.7; }
+        .input-icon svg {
+            width: 100%; height: 100%;
+            stroke: var(--navy);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .form-row .form-group { margin-bottom: 16px; }
+
+        .btn {
+            width: 100%;
+            padding: 18px;
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeUp 0.45s ease 0.45s both;
+        }
+        .btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.22) 50%, transparent 60%);
+            transform: translateX(-100%);
+            animation: shine 3.5s ease-in-out infinite;
+        }
+        @keyframes shine {
+            0%, 70% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .btn:active { opacity: 0.92; }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+            color: white;
+        }
+        .btn-secondary {
+            background: var(--field);
+            color: var(--navy);
+            margin-top: 10px;
+            animation-delay: 0.55s;
+        }
+        .btn-secondary::after { display: none; }
+
+        .link-text {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .link-text a {
+            color: var(--teal-dark);
+            text-decoration: none;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .processing-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+            flex: 1;
+            width: 100%;
+            min-height: calc(100vh - 80px);
+            min-height: calc(100dvh - 80px);
+            background: var(--surface);
+            text-align: center;
+        }
+        .processing-logo {
+            width: 120px; height: 120px;
+            overflow: hidden;
+            margin-bottom: 36px;
+            animation: floatSoft 3s ease-in-out infinite;
+        }
+        .processing-logo img { width: 100%; height: 100%; object-fit: cover; }
+        .processing-animation {
+            position: relative;
+            width: 110px; height: 110px;
+            margin-bottom: 28px;
+        }
+        .processing-ring {
+            position: absolute;
+            inset: 0;
+            border: 3px solid transparent !important;
+            border-top-color: var(--teal) !important;
+            border-radius: 50% !important;
+            animation: spin 1.4s linear infinite;
+            box-shadow: none !important;
+        }
+        .processing-ring:nth-child(2) {
+            inset: 14%;
+            border-top-color: var(--navy) !important;
+            animation: spin 1s linear infinite reverse;
+        }
+        .processing-ring:nth-child(3) {
+            inset: 28%;
+            border-top-color: #7dd3c0 !important;
+            animation: spin 0.7s linear infinite;
+        }
+        .processing-text h3 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--navy);
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .processing-text p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+            line-height: 1.5;
+        }
+        .processing-steps {
+            margin-top: 32px;
+            width: 100%;
+            max-width: 280px;
+            text-align: left;
+        }
+        .proc-step {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            opacity: 0;
+            animation: stepReveal 0.5s ease forwards;
+        }
+        .proc-step:nth-child(1) { animation-delay: 0.3s; }
+        .proc-step:nth-child(2) { animation-delay: 0.7s; }
+        .proc-step:nth-child(3) { animation-delay: 1.1s; }
+        @keyframes stepReveal {
+            from { opacity: 0; transform: translateX(-12px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .proc-step-icon {
+            width: 24px; height: 24px;
+            border-radius: 50% !important;
+            background: var(--teal-soft);
+            color: var(--teal-dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .qr-container {
+            width: 100%;
+            flex: 1;
+            padding: 24px 20px calc(28px + var(--safe-bottom));
+            display: flex;
+            flex-direction: column;
+        }
+        .qr-header {
+            text-align: center;
+            margin-bottom: 24px;
+            animation: fadeUp 0.4s ease both;
+        }
+        .qr-header h2 {
+            font-family: 'Outfit', sans-serif;
+            color: var(--navy);
+            font-size: 1.45rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .qr-header p { color: var(--text-muted); font-size: 0.9rem; font-weight: 500; }
+
+        .qr-box {
+            background: var(--field);
+            padding: 36px 20px;
+            text-align: center;
+            margin-bottom: 0;
+            width: 100%;
+            animation: fadeUp 0.4s ease 0.08s both;
+        }
+        #qrcode { display: inline-block; }
+        #qrcode img, #qrcode canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            animation: logoPop 0.45s ease both;
+        }
+
+        .qr-info-card {
+            background: var(--surface);
+            padding: 8px 0;
+            margin: 0;
+            width: 100%;
+            animation: fadeUp 0.4s ease 0.16s both;
+        }
+        .qr-info-card h4 {
+            color: var(--navy);
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 16px 4px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .qr-info-card h4::before {
+            content: '';
+            width: 4px; height: 14px;
+            background: var(--teal);
+        }
+        .info-row {
+            display: flex;
+            align-items: flex-start;
+            padding: 16px 4px;
+            background: transparent;
+        }
+        .info-icon {
+            width: 44px; height: 44px;
+            background: var(--teal-soft);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 14px;
+            flex-shrink: 0;
+        }
+        .info-icon svg {
+            width: 18px; height: 18px;
+            stroke: var(--teal-dark);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .info-content { flex: 1; min-width: 0; }
+        .info-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 600;
+        }
+        .info-value {
+            font-size: 1rem;
+            color: var(--navy);
+            font-weight: 700;
+            margin-top: 2px;
+            word-break: break-word;
+            line-height: 1.45;
+            white-space: pre-line;
+        }
+
+        .success-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+            color: white;
+            padding: 18px 20px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin: 8px 0 16px;
+            width: 100%;
+            animation: fadeUp 0.4s ease 0.24s both;
+        }
+        .success-badge svg {
+            width: 18px; height: 18px;
+            stroke: white;
+            fill: none;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .app-footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            background: var(--field);
+            width: 100%;
+            margin-top: auto;
+        }
+
+        @media (min-width: 768px) {
+            .card-body, .qr-container { padding-left: 40px; padding-right: 40px; }
+            .card-header { padding: 40px; }
+            .status-strip { padding-left: 40px; padding-right: 40px; }
+            .app-header { padding-left: 40px; padding-right: 40px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient" aria-hidden="true">
+        <span></span><span></span><span></span>
+    </div>
+
+    <div id="loading-screen">
+        <div class="loading-logo">
+            <img src="logo.jpeg" alt="Andre Veiculos">
+        </div>
+        <div class="loading-badge">Rastreamento</div>
+        <div class="loading-subtitle">Sistema de entrega e rastreio</div>
+        <div class="spinner"></div>
+    </div>
+
+    <div id="app">
+        <header class="app-header">
+            <div class="brand-lockup">
+                <div class="brand-logo">
+                    <img src="logo.jpeg" alt="Andre Veiculos">
+                </div>
+                <div class="brand-text">
+                    <div class="brand-name">Andre Veiculos</div>
+                    <div class="brand-tag">Rastreamento</div>
+                </div>
+            </div>
+            <div class="user-bar" id="user-bar">
+                <div class="user-chip">
+                    <div class="user-avatar" id="user-initial">U</div>
+                    <span id="user-name">Usuário</span>
+                </div>
+                <button class="logout-btn" onclick="logout()">Sair</button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Register -->
+            <div class="screen active" id="screen-register">
+                <div class="status-strip">
+                    <div class="status-dot"></div>
+                    <span>Bem-vindo ao <strong>rastreio Andre Veiculos</strong></span>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-logo">
+                            <img src="logo.jpeg" alt="Andre Veiculos">
+                        </div>
+                        <h2>Criar Conta</h2>
+                        <p>Cadastre-se para rastrear suas entregas</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Nome Completo</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                                <input type="text" class="form-input" id="reg-name" placeholder="Digite seu nome completo" autocomplete="name">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Telefone</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span>
+                                <input type="tel" class="form-input" id="reg-phone" placeholder="Digite seu telefone" autocomplete="tel">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Senha</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                                <input type="password" class="form-input" id="reg-password" placeholder="Crie sua senha" autocomplete="new-password">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="handleRegister()">Criar Conta</button>
+                        <p class="link-text">Já tem uma conta? <a onclick="showScreen('login')">Entrar</a></p>
+                    </div>
+                </div>
+                <p class="app-footer">Andre Veiculos</p>
+            </div>
+
+            <!-- Login -->
+            <div class="screen" id="screen-login">
+                <div class="status-strip">
+                    <div class="status-dot"></div>
+                    <span>Acesse seu <strong>painel de rastreio</strong></span>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-logo">
+                            <img src="logo.jpeg" alt="Andre Veiculos">
+                        </div>
+                        <h2>Acessar Conta</h2>
+                        <p>Entre com suas credenciais</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Telefone</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span>
+                                <input type="tel" class="form-input" id="login-phone" placeholder="Digite seu telefone" autocomplete="tel">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Senha</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                                <input type="password" class="form-input" id="login-password" placeholder="Digite sua senha" autocomplete="current-password">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="handleLogin()">Entrar</button>
+                        <p class="link-text">Não tem uma conta? <a onclick="showScreen('register')">Cadastrar</a></p>
+                    </div>
+                </div>
+                <p class="app-footer">Andre Veiculos</p>
+            </div>
+
+            <!-- Shipping -->
+            <div class="screen" id="screen-shipping">
+                <div class="status-strip">
+                    <div class="status-dot"></div>
+                    <span>Registrar <strong>nova entrega</strong></span>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-logo">
+                            <img src="logo.jpeg" alt="Andre Veiculos">
+                        </div>
+                        <h2>Dados da Entrega</h2>
+                        <p>Preencha os dados de recebimento</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Nome do Destinatário</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                                <input type="text" class="form-input" id="ship-name" placeholder="Nome completo do destinatário">
+                            </div>
+                        </div>
+
+                        <div class="section-label">Endereço de entrega</div>
+
+                        <div class="form-group">
+                            <label class="form-label">CEP</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+                                <input type="text" class="form-input" id="ship-cep" placeholder="00000-000" maxlength="9" inputmode="numeric" autocomplete="postal-code">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Rua / Logradouro</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                                <input type="text" class="form-input" id="ship-street" placeholder="Nome da rua ou avenida" autocomplete="street-address">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Número</label>
+                                <input type="text" class="form-input no-icon" id="ship-number" placeholder="Nº" inputmode="numeric">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Complemento</label>
+                                <input type="text" class="form-input no-icon" id="ship-complement" placeholder="Apto, bloco...">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Bairro</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+                                <input type="text" class="form-input" id="ship-neighborhood" placeholder="Bairro">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Cidade</label>
+                                <input type="text" class="form-input no-icon" id="ship-city" placeholder="Cidade" autocomplete="address-level2">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Estado (UF)</label>
+                                <select class="form-select no-icon" id="ship-state" autocomplete="address-level1">
+                                    <option value="">UF</option>
+                                    <option value="AC">AC</option>
+                                    <option value="AL">AL</option>
+                                    <option value="AP">AP</option>
+                                    <option value="AM">AM</option>
+                                    <option value="BA">BA</option>
+                                    <option value="CE">CE</option>
+                                    <option value="DF">DF</option>
+                                    <option value="ES">ES</option>
+                                    <option value="GO">GO</option>
+                                    <option value="MA">MA</option>
+                                    <option value="MT">MT</option>
+                                    <option value="MS">MS</option>
+                                    <option value="MG">MG</option>
+                                    <option value="PA">PA</option>
+                                    <option value="PB">PB</option>
+                                    <option value="PR">PR</option>
+                                    <option value="PE">PE</option>
+                                    <option value="PI">PI</option>
+                                    <option value="RJ">RJ</option>
+                                    <option value="RN">RN</option>
+                                    <option value="RS">RS</option>
+                                    <option value="RO">RO</option>
+                                    <option value="RR">RR</option>
+                                    <option value="SC">SC</option>
+                                    <option value="SP">SP</option>
+                                    <option value="SE">SE</option>
+                                    <option value="TO">TO</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Ponto de referência <span style="font-weight:500;color:var(--text-muted)">(opcional)</span></label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>
+                                <input type="text" class="form-input" id="ship-reference" placeholder="Próximo a...">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Código de Rastreamento (7 dígitos)</label>
+                            <div class="input-wrapper">
+                                <span class="input-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+                                <input type="text" class="form-input" id="ship-code" placeholder="0000000" maxlength="7" inputmode="numeric">
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" onclick="handleShipping()">Salvar e Rastrear</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Processing -->
+            <div class="screen" id="screen-processing">
+                <div class="processing-panel">
+                    <div class="processing-logo">
+                        <img src="logo.jpeg" alt="Andre Veiculos">
+                    </div>
+                    <div class="processing-animation">
+                        <div class="processing-ring"></div>
+                        <div class="processing-ring"></div>
+                        <div class="processing-ring"></div>
+                    </div>
+                    <div class="processing-text">
+                        <h3>Processando Envio</h3>
+                        <p>Gerando seu QR Code de rastreamento,<br>por favor aguarde...</p>
+                    </div>
+                    <div class="processing-steps">
+                        <div class="proc-step">
+                            <div class="proc-step-icon">1</div>
+                            Validando dados da entrega
+                        </div>
+                        <div class="proc-step">
+                            <div class="proc-step-icon">2</div>
+                            Gerando código de rastreio
+                        </div>
+                        <div class="proc-step">
+                            <div class="proc-step-icon">3</div>
+                            Preparando QR Code
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- QR Code -->
+            <div class="screen" id="screen-qr">
+                <div class="qr-container">
+                    <div class="qr-header">
+                        <h2>QR Code Gerado</h2>
+                        <p>Apresente este código no momento da entrega</p>
+                    </div>
+
+                    <div class="qr-box">
+                        <div id="qrcode"></div>
+                    </div>
+
+                    <div class="qr-info-card">
+                        <h4>Informações do Envio</h4>
+                        <div class="info-row">
+                            <div class="info-icon"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                            <div class="info-content">
+                                <div class="info-label">Destinatário</div>
+                                <div class="info-value" id="qr-name"></div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+                            <div class="info-content">
+                                <div class="info-label">Endereço</div>
+                                <div class="info-value" id="qr-address"></div>
+                            </div>
+                        </div>
+                        <div class="info-row">
+                            <div class="info-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+                            <div class="info-content">
+                                <div class="info-label">Código de Rastreamento</div>
+                                <div class="info-value" id="qr-code"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="success-badge">
+                        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                        Envio registrado com sucesso
+                    </div>
+
+                    <button class="btn btn-primary" onclick="newShipping()">Novo Envio</button>
+                    <button class="btn btn-secondary" onclick="downloadQR()">Salvar QR Code</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <script>
+        let currentUser = null;
+        let shippingData = null;
+
+        const UF_LIST = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+        window.onload = function() {
+            loadUserData();
+            setupCepMask();
+            setTimeout(() => hideLoading(), 7000);
+        };
+
+        function setupCepMask() {
+            const cep = document.getElementById('ship-cep');
+            cep.addEventListener('input', function() {
+                let v = this.value.replace(/\D/g, '').slice(0, 8);
+                if (v.length > 5) v = v.slice(0, 5) + '-' + v.slice(5);
+                this.value = v;
+            });
+        }
+
+        function loadUserData() {
+            const savedUser = localStorage.getItem('transportadora_user');
+            if (savedUser) currentUser = JSON.parse(savedUser);
+            const savedShipping = localStorage.getItem('transportadora_shipping');
+            if (savedShipping) shippingData = JSON.parse(savedShipping);
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('app').classList.add('active');
+            if (currentUser) {
+                showUserBar();
+                showScreen('shipping');
+            }
+        }
+
+        function showUserBar() {
+            if (currentUser) {
+                document.getElementById('user-bar').classList.add('visible');
+                const first = currentUser.name.split(' ')[0];
+                document.getElementById('user-name').textContent = first;
+                document.getElementById('user-initial').textContent = first.charAt(0).toUpperCase();
+            }
+        }
+
+        function showScreen(screenName) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-' + screenName).classList.add('active');
+        }
+
+        function handleRegister() {
+            const name = document.getElementById('reg-name').value.trim();
+            const phone = document.getElementById('reg-phone').value.trim();
+            const password = document.getElementById('reg-password').value;
+
+            if (!name || !phone || !password) {
+                alert('Por favor, preencha todos os campos!');
+                return;
+            }
+
+            const users = JSON.parse(localStorage.getItem('transportadora_users') || '[]');
+            if (users.find(u => u.phone === phone)) {
+                alert('Telefone já cadastrado! Faça login.');
+                showScreen('login');
+                return;
+            }
+
+            const user = { id: Date.now(), name, phone, password, createdAt: new Date().toISOString() };
+            users.push(user);
+            localStorage.setItem('transportadora_users', JSON.stringify(users));
+            localStorage.setItem('transportadora_user', JSON.stringify(user));
+            currentUser = user;
+
+            alert('Cadastro realizado! Bem-vindo, ' + name.split(' ')[0] + '!');
+            showUserBar();
+            showScreen('shipping');
+        }
+
+        function handleLogin() {
+            const phone = document.getElementById('login-phone').value.trim();
+            const password = document.getElementById('login-password').value;
+
+            if (!phone || !password) {
+                alert('Preencha todos os campos!');
+                return;
+            }
+
+            const users = JSON.parse(localStorage.getItem('transportadora_users') || '[]');
+            const user = users.find(u => u.phone === phone && u.password === password);
+
+            if (!user) {
+                alert('Telefone ou senha incorretos!');
+                return;
+            }
+
+            localStorage.setItem('transportadora_user', JSON.stringify(user));
+            currentUser = user;
+
+            alert('Login realizado! Bem-vindo, ' + user.name.split(' ')[0] + '!');
+            showUserBar();
+            showScreen('shipping');
+        }
+
+        function buildAddressString(parts) {
+            const line1 = [parts.street, parts.number].filter(Boolean).join(', ');
+            const line2 = parts.complement ? ` — ${parts.complement}` : '';
+            const line3 = [parts.neighborhood, parts.city, parts.state].filter(Boolean).join(' · ');
+            const cep = parts.cep ? `CEP ${parts.cep}` : '';
+            const ref = parts.reference ? `Ref.: ${parts.reference}` : '';
+            return [line1 + line2, line3, cep, ref].filter(Boolean).join('\n');
+        }
+
+        function handleShipping() {
+            const name = document.getElementById('ship-name').value.trim();
+            const cep = document.getElementById('ship-cep').value.trim();
+            const street = document.getElementById('ship-street').value.trim();
+            const number = document.getElementById('ship-number').value.trim();
+            const complement = document.getElementById('ship-complement').value.trim();
+            const neighborhood = document.getElementById('ship-neighborhood').value.trim();
+            const city = document.getElementById('ship-city').value.trim();
+            const state = document.getElementById('ship-state').value;
+            const reference = document.getElementById('ship-reference').value.trim();
+            const code = document.getElementById('ship-code').value.trim();
+
+            if (!name || !cep || !street || !number || !neighborhood || !city || !state || !code) {
+                alert('Preencha todos os campos obrigatórios do endereço!');
+                return;
+            }
+
+            const cepDigits = cep.replace(/\D/g, '');
+            if (cepDigits.length !== 8) {
+                alert('Informe um CEP válido com 8 dígitos!');
+                return;
+            }
+
+            if (!UF_LIST.includes(state)) {
+                alert('Selecione um estado válido!');
+                return;
+            }
+
+            if (code.length !== 7 || !/^\d{7}$/.test(code)) {
+                alert('O código deve ter exatamente 7 dígitos numéricos!');
+                return;
+            }
+
+            const addressParts = { cep, street, number, complement, neighborhood, city, state, reference };
+            const address = buildAddressString(addressParts);
+
+            shippingData = {
+                name,
+                address,
+                ...addressParts,
+                code,
+                userId: currentUser?.id,
+                createdAt: new Date().toISOString()
+            };
+            localStorage.setItem('transportadora_shipping', JSON.stringify(shippingData));
+
+            showScreen('processing');
+
+            setTimeout(() => {
+                generateQRCode();
+            }, 120000);
+        }
+
+        function generateQRCode() {
+            showScreen('qr');
+
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+
+            const qrDataString = `ANDRE_VEICULOS|${shippingData.code}|${shippingData.name}|${new Date().toISOString()}`;
+
+            try {
+                new QRCode(qrContainer, {
+                    text: qrDataString,
+                    width: 220,
+                    height: 220,
+                    colorDark: '#002845',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+
+                document.getElementById('qr-name').textContent = shippingData.name;
+                document.getElementById('qr-address').textContent = shippingData.address;
+                document.getElementById('qr-code').textContent = shippingData.code;
+
+            } catch (error) {
+                console.error('QR Code error:', error);
+                qrContainer.innerHTML = '<p style="color: #c53030; text-align: center;">Erro ao gerar QR Code</p>';
+            }
+        }
+
+        function clearShippingForm() {
+            ['ship-name','ship-cep','ship-street','ship-number','ship-complement',
+             'ship-neighborhood','ship-city','ship-reference','ship-code'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('ship-state').value = '';
+        }
+
+        function newShipping() {
+            clearShippingForm();
+            showScreen('shipping');
+        }
+
+        function downloadQR() {
+            const qrCanvas = document.querySelector('#qrcode canvas');
+            if (qrCanvas) {
+                const link = document.createElement('a');
+                link.download = 'qr-code-' + shippingData.code + '.png';
+                link.href = qrCanvas.toDataURL('image/png');
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                alert('QR Code não está pronto');
+            }
+        }
+
+        function logout() {
+            if (confirm('Deseja realmente sair?')) {
+                localStorage.removeItem('transportadora_user');
+                currentUser = null;
+                document.getElementById('user-bar').classList.remove('visible');
+                showScreen('login');
+            }
+        }
+    </script>
+</body>
+</html>
